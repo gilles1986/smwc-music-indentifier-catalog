@@ -1,9 +1,9 @@
 {
   "catalog_version": "2026-08-14",
-  "entries": 9603,
+  "entries": 9652,
   "mirrors": [],
   "schema_version": 3,
-  "sha256": "d67ca48a52da819123a66f6262c92314cbc7b3ad1f7875128c3b14a809689b24",
-  "size_bytes": 1460613,
+  "sha256": "14b8c3630342e599ace3632b4200f8cb5dd7878c6886a9e38abcfe0832eb6739",
+  "size_bytes": 1462345,
   "url": "https://raw.githubusercontent.com/gilles1986/smwc-music-indentifier-catalog/main/releases/music-3-20260814.json.gz"
 }
