@@ -1,0 +1,75 @@
+# Daily top-up of the music fingerprint database.
+#
+# Goes in the catalog repository as .github/workflows/daily-update.yml.
+#
+# The fingerprint code is vendored into that repository rather than checked out
+# beside it: the player lives in a private Gitea that a GitHub Action cannot
+# reach. `smwrom/` is pure standard library, so the copy is a file copy — see
+# smwrom/VENDORED.md there, and tools/export_fingerprint_kit.py in the player
+# for how it is refreshed and how staleness is detected.
+
+name: Update fingerprints
+
+on:
+  schedule:
+    # Just after 04:00 UTC. Nothing depends on the hour; it is quiet, and it is
+    # not on the hour, where every scheduled job on GitHub piles up.
+    - cron: "7 4 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Most entries to add in one run"
+        default: "200"
+
+# Two runs writing the same branch would race, and the loser's downloads are
+# wasted work against somebody else's bandwidth.
+concurrency:
+  group: fingerprints
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install requests
+
+      - name: Add whatever SMWCentral has that we do not
+        run: |
+          python tools/update_music_fingerprints.py \
+            --database music_fingerprints.json.gz \
+            --state checked.json \
+            --manifest manifest.json \
+            --base-url "https://raw.githubusercontent.com/${{ github.repository }}/main/releases" \
+            --limit "${{ github.event.inputs.limit || 200 }}"
+
+      - name: Keep a copy under the name the manifest publishes
+        run: |
+          # The manifest points at an immutable, dated name: a published file is
+          # never overwritten, because a client may be part-way through
+          # downloading it. The working copy at the repository root is what the
+          # next run extends.
+          mkdir -p releases
+          name=$(python -c "import json;print(json.load(open('manifest.json'))['url'].rsplit('/',1)[1])")
+          cp music_fingerprints.json.gz "releases/$name"
+
+      - name: Commit, if the day brought anything
+        run: |
+          git config user.name "fingerprint bot"
+          git config user.email "noreply@github.com"
+          git add music_fingerprints.json.gz checked.json manifest.json releases/
+          # A quiet day is the normal case, not a failure.
+          if git diff --cached --quiet; then
+            echo "nothing new today"
+            exit 0
+          fi
+          git commit -m "chore: index new SMWCentral music"
+          git push
