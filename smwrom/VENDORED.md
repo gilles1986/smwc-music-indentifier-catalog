@@ -7,6 +7,6 @@ this repository publishes will stop matching what the player reads.
 
 | | |
 |---|---|
-| Source commit | `24b1670` |
+| Source commit | `d546e18` |
 | Exported | 2026-08-14 |
-| Digest | `4b22a32d40bc22dff734b45d7f9563cdb4d45403ffd50639645346d73fb8af6e` |
+| Digest | `a862cefedc3ca11a811e76a7aa859b36fb1edd44e9a93e0a5192918df39b1525` |

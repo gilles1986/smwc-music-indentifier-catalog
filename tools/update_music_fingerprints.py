@@ -57,6 +57,10 @@ DOWNLOAD_TIMEOUT = (10, 60)
 #: The listing endpoint. Three parameters and a page counter.
 SMWC_API = "https://www.smwcentral.net/ajax.php"
 
+#: A stop for the listing walk. It ends at the first fully-known page long
+#: before this; the cap is only there so a confused endpoint cannot spin.
+MAX_PAGES = 250
+
 #: A polite, identifiable agent. An unattended job that looks like a browser is
 #: harder for them to talk to if it ever misbehaves.
 USER_AGENT = (
@@ -93,19 +97,30 @@ def save_state(path: str, checked: Set[str]) -> None:
         json.dump(payload, handle, indent=0, sort_keys=True)
 
 
-def fetch_catalog(session: requests.Session) -> List[dict]:
-    """Walk the SMWCentral music listing.
+def fetch_catalog(session: requests.Session, known: Set[str]) -> List[dict]:
+    """Walk the SMWCentral listing, newest first, until it stops saying anything new.
 
     Deliberately not through ``music_api``: this runs in a scheduled job, and
     reaching into the player for one HTTP call would drag its configuration,
-    its logging and its dependencies along. The listing endpoint is three
-    parameters and a page counter.
+    its logging and its dependencies along.
+
+    The walk stops at the first page that is entirely already known. Sorted
+    newest first, everything past such a page is older still, so there is
+    nothing behind it to find. On a normal day that is one page; after a week
+    of the job being down it is as many as it takes.
+
+    Reading a fixed single page instead — which this did at first, by asking
+    for a ``pages`` field the endpoint does not have — works right up until
+    more than one page of submissions arrives between two runs. The overflow
+    then scrolls off page one and is never seen again, because nothing else
+    ever looks further back.
 
     Args:
         session: The HTTP session, already carrying the user agent.
+        known: Entry IDs already examined.
 
     Returns:
-        One row per entry, newest first.
+        One row per entry seen, newest first.
 
     Raises:
         ValueError: If the endpoint answers with something that is not a
@@ -113,7 +128,7 @@ def fetch_catalog(session: requests.Session) -> List[dict]:
     """
     rows: List[dict] = []
     page = 1
-    while True:
+    while page <= MAX_PAGES:
         response = session.get(
             SMWC_API,
             params={"a": "getsectionlist", "s": "smwmusic", "n": page,
@@ -128,8 +143,11 @@ def fetch_catalog(session: requests.Session) -> List[dict]:
         if not batch:
             break
         rows.extend(batch)
-        pages = int(data.get("pages") or 1)
-        if page >= pages:
+
+        if all(str(row.get("id", "")) in known for row in batch):
+            break
+        # ``last_page`` is what the endpoint actually calls it.
+        if page >= int(data.get("last_page") or 1):
             break
         page += 1
         time.sleep(REQUEST_DELAY)
@@ -252,10 +270,10 @@ def update(
         with open(catalog_path, encoding="utf-8") as handle:
             rows = json.load(handle)["entries"]
     else:
-        rows = fetch_catalog(session)
+        rows = fetch_catalog(session, checked)
 
     missing = [row for row in rows if str(row.get("id", "")) not in checked]
-    stats = {"catalog": len(rows), "missing": len(missing), "added": 0, "empty": 0,
+    stats = {"seen": len(rows), "missing": len(missing), "added": 0, "empty": 0,
              "failed": 0}
 
     for row in missing[:limit]:
@@ -310,7 +328,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     save_state(args.state, checked)
 
     print()
-    print("catalog entries : %d" % stats["catalog"])
+    print("listing seen    : %d entries" % stats["seen"])
     print("not yet indexed : %d" % stats["missing"])
     print("added this run  : %d" % stats["added"])
     print("nothing usable  : %d" % stats["empty"])
