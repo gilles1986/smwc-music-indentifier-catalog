@@ -1,9 +1,9 @@
 {
-  "catalog_version": "2026-09-18",
+  "catalog_version": "2026-09-19",
   "entries": 9742,
   "mirrors": [],
   "schema_version": 3,
   "sha256": "4199020ca04f2ef91e2af1b54bb5b8d97e6b366ed6172caf5ee2d6b2f89d4792",
   "size_bytes": 1465849,
-  "url": "https://raw.githubusercontent.com/gilles1986/smwc-music-indentifier-catalog/main/releases/music-3-20260918.json.gz"
+  "url": "https://raw.githubusercontent.com/gilles1986/smwc-music-indentifier-catalog/main/releases/music-3-20260919.json.gz"
 }
