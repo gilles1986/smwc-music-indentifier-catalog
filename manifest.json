@@ -1,9 +1,9 @@
 {
-  "catalog_version": "2026-10-21",
-  "entries": 9829,
+  "catalog_version": "2026-10-22",
+  "entries": 9850,
   "mirrors": [],
   "schema_version": 3,
-  "sha256": "ca449858e7ad04d7d5ef0d67f6249545a4bc03c1316a93c92f893e8e70e61b54",
-  "size_bytes": 1468303,
-  "url": "https://raw.githubusercontent.com/gilles1986/smwc-music-indentifier-catalog/main/releases/music-3-20261021.json.gz"
+  "sha256": "c1750ecb9c18db319824e3a0e2d0dd605cd29cf5dfd053568be0ebf1e7b8dcca",
+  "size_bytes": 1469165,
+  "url": "https://raw.githubusercontent.com/gilles1986/smwc-music-indentifier-catalog/main/releases/music-3-20261022.json.gz"
 }
