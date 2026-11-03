@@ -4,9 +4,14 @@
 #
 # The fingerprint code is vendored into that repository rather than checked out
 # beside it: the player lives in a private Gitea that a GitHub Action cannot
-# reach. `smwrom/` is pure standard library, so the copy is a file copy — see
+# reach. `smwrom/` is pure standard library, so the copy is a file copy -- see
 # smwrom/VENDORED.md there, and tools/export_fingerprint_kit.py in the player
 # for how it is refreshed and how staleness is detected.
+#
+# The published copy is a GitHub Release asset, not a file in the repository: a
+# 1.4 MB file committed per change grows the history for good, and a release
+# can be deleted. Only the working copy (the one the next run extends), the
+# state file and the manifest are committed.
 
 name: Update fingerprints
 
@@ -27,6 +32,11 @@ concurrency:
   group: fingerprints
   cancel-in-progress: false
 
+env:
+  # How many published releases stay. The manifest always names the newest; the
+  # older ones cover a client that is part-way through downloading one.
+  KEEP_RELEASES: 3
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -42,30 +52,72 @@ jobs:
 
       - run: pip install requests
 
+      - name: Name the release
+        id: name
+        run: |
+          schema=$(python -c "from smwrom.fingerprints import SCHEMA_VERSION; print(SCHEMA_VERSION)")
+          stamp=$(date -u +%Y%m%d)
+          echo "tag=music-${schema}-${stamp}" >> "$GITHUB_OUTPUT"
+          echo "file=music-${schema}-${stamp}.json.gz" >> "$GITHUB_OUTPUT"
+
       - name: Add whatever SMWCentral has that we do not
         run: |
           python tools/update_music_fingerprints.py \
             --database music_fingerprints.json.gz \
             --state checked.json \
             --manifest manifest.json \
-            --base-url "https://raw.githubusercontent.com/${{ github.repository }}/main/releases" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ steps.name.outputs.tag }}" \
             --limit "${{ github.event.inputs.limit || 200 }}"
 
-      - name: Keep a copy under the name the manifest publishes
+      - name: Decide whether there is something to publish
+        id: publish
         run: |
-          # The manifest points at an immutable, dated name: a published file is
-          # never overwritten, because a client may be part-way through
-          # downloading it. The working copy at the repository root is what the
-          # next run extends.
-          mkdir -p releases
-          name=$(python -c "import json;print(json.load(open('manifest.json'))['url'].rsplit('/',1)[1])")
-          cp music_fingerprints.json.gz "releases/$name"
+          # Publish when the database changed, or when the manifest in the
+          # repository still points somewhere other than a release (the first
+          # run after the move away from committed copies).
+          publish=false
+          if ! git diff --quiet -- music_fingerprints.json.gz; then publish=true; fi
+          if ! git show HEAD:manifest.json | grep -q '/releases/download/'; then publish=true; fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          if [ "$publish" = false ]; then
+            # The script rewrites the manifest every day, with today's name. A
+            # quiet day publishes nothing, so the manifest must keep naming the
+            # release that exists.
+            git checkout -- manifest.json
+          fi
+
+      - name: Publish the release
+        if: steps.publish.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A published file is never overwritten: a client may be part-way
+          # through downloading it. A same-day rerun that finds the tag taken
+          # fails here rather than replace it.
+          cp music_fingerprints.json.gz "${{ steps.name.outputs.file }}"
+          gh release create "${{ steps.name.outputs.tag }}" "${{ steps.name.outputs.file }}" \
+            --title "Fingerprints ${{ steps.name.outputs.tag }}" \
+            --notes "Published copy of music_fingerprints.json.gz. manifest.json in the repository names the newest."
+
+      - name: Delete older releases
+        if: steps.publish.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 200 --json tagName --jq '.[].tagName' \
+            | grep '^music-' | sort -r | tail -n +$((KEEP_RELEASES + 1)) \
+            | xargs -r -I{} gh release delete {} --cleanup-tag --yes
 
       - name: Commit, if the day brought anything
         run: |
           git config user.name "fingerprint bot"
           git config user.email "noreply@github.com"
-          git add music_fingerprints.json.gz checked.json manifest.json releases/
+          # Only after the release exists: the manifest must never name a file
+          # that is not there. The old committed copies go with it.
+          if [ "${{ steps.publish.outputs.publish }}" = true ]; then
+            git rm -r -q --ignore-unmatch releases
+          fi
+          git add music_fingerprints.json.gz checked.json manifest.json
           # A quiet day is the normal case, not a failure.
           if git diff --cached --quiet; then
             echo "nothing new today"

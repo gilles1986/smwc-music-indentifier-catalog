@@ -15,7 +15,7 @@ and how it keeps itself current.
 | `music_fingerprints.json.gz` | The working copy. Each run extends this one. |
 | `checked.json` | Entry IDs already examined. The only record of the ones that yielded nothing. |
 | `manifest.json` | What the player fetches: where the artifact is, its size, its checksum. |
-| `releases/music-<schema>-<date>.json.gz` | Immutable published copies. Never overwritten. |
+| GitHub Release `music-<schema>-<date>` | The published copy, as a release asset. Never overwritten; only the newest 3 are kept. |
 | `.github/workflows/daily-update.yml` | The job. |
 | `smwrom/`, `tools/` | The fingerprint code, vendored from the player. |
 
@@ -83,8 +83,10 @@ it reads — in either direction. This is about noticing before a user does.
 
 ## Publishing
 
-`manifest.json` is written by the job and points into `releases/` on the default
-branch, served raw by GitHub. If you would rather serve from saphros.de, upload
+`manifest.json` is written by the job and points at the asset of the newest GitHub
+Release. The copy is not committed: a 1.4 MB file per change grows the history for
+good, and a release can be deleted. A quiet day publishes nothing and leaves the
+manifest alone. If you would rather serve from saphros.de, upload
 the file there and change `--base-url`; the player reads the URL from the
 manifest and does not care which host answers.
 
